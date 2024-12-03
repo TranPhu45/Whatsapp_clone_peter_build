@@ -36,27 +36,35 @@ const MessageInput = () => {
 	const sendTextMsg = useMutation(api.messages.sendTextMessage);
 	const sendAudioMsg = useMutation(api.messages.sendAudio);
 	const [isRecording, setIsRecording] = useState(false);
-	const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-	const [audioChunks, setAudioChunks] = useState<BlobPart[]>([]);
+	const [audioChunks, setAudioChunks] = useState<Blob[]>([]);
+	const mediaRecorder = useRef<MediaRecorder | null>(null);
 
 	const generateUploadUrl = useMutation(api.conversations.generateUploadUrl);
 
-	const handleStartRecording = async () => {
-		setIsRecording(true);
-		const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-		const mediaRecorder = new MediaRecorder(stream);
-		mediaRecorderRef.current = mediaRecorder;
+	const startRecording = async () => {
+		try {
+			const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+			mediaRecorder.current = new MediaRecorder(stream);
+			
+			mediaRecorder.current.ondataavailable = (e) => {
+				if (e.data.size > 0) {
+					setAudioChunks((chunks) => [...chunks, e.data]);
+				}
+			};
 
-		mediaRecorder.ondataavailable = (event) => {
-			setAudioChunks((prev) => [...prev, event.data]);
-		};
-
-		mediaRecorder.start();
+			mediaRecorder.current.start();
+			setIsRecording(true);
+		} catch (err) {
+			console.error("Error accessing microphone:", err);
+		}
 	};
 
-	const handleStopRecording = () => {
-		mediaRecorderRef.current?.stop();
-		setIsRecording(false);
+	const stopRecording = () => {
+		if (mediaRecorder.current) {
+			mediaRecorder.current.stop();
+			setIsRecording(false);
+			// Handle the recorded audio...
+		}
 	};
 
 	const handleSendAudio = async () => {
@@ -107,7 +115,6 @@ const MessageInput = () => {
 
 			if (SpeechRecognition) {
 				setSpeechSupported(true);
-
 				recognitionRef.current = new SpeechRecognition();
 				const recognition = recognitionRef.current;
 
@@ -120,83 +127,38 @@ const MessageInput = () => {
 					toast.success("Listening started");
 				};
 
-				recognition.onresult = (event: Event) => {
-					const speechEvent = event as SpeechRecognitionEvent;
-					const current = speechEvent.resultIndex;
-					const transcript = speechEvent.results[current][0].transcript;
-					const currentMessage = msgText || "";
+				recognition.onresult = (event: SpeechRecognitionEvent) => {
+					const current = event.resultIndex;
+					const transcript = event.results[current][0].transcript;
 
-					if (speechEvent.results[current].isFinal) {
-						setMsgText(currentMessage + transcript + " ");
+					if (event.results[current].isFinal) {
+						setMsgText((prev) => prev + transcript + " ");
 					}
 				};
 
-				recognition.onerror = (event: Event) => {
-					const errorEvent = event as SpeechRecognitionErrorEvent;
-					console.log('Speech recognition error: ', errorEvent.error);
+				recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
+					console.error('Speech recognition error:', event.error);
 					setIsListening(false);
-
-					switch (errorEvent.error) {
-						case 'not-allowed':
-							toast.error("Microphone access denied. Please allow microphone access.");
-							setHasMicPermission(false);
-							break;
-						case 'no-speech':
-							toast.error("No speech detected. Please try again.");
-							break;
-						case 'network':
-							toast.error("Network error. Please check your connection.");
-							break;
-						default:
-							toast("Speech recognition error. Please try again.", {
-								icon: '⚠️',
-							});
-					}
+					 toast("Speech recognition error", { icon: '⚠️' });
 				};
 
 				recognition.onend = () => {
 					setIsListening(false);
-					toast("Stopped listening", {
-						icon: 'ℹ️',
-					});
+					toast("Stopped listening", { icon: 'ℹ️' });
 				};
-
-				checkMicrophonePermission();
 			}
 		}
 	}, []);
 
-	const toggleListening = async () => {
+	const toggleListening = () => {
 		if (!recognitionRef.current) return;
-	  
+
 		if (isListening) {
-		  recognitionRef.current.stop();
+			recognitionRef.current.stop();
 		} else {
-		  if (hasMicPermission === false) {
-			toast.error(
-			  "Microphone access denied. Please allow access in browser settings."
-			);
-	  
-			toast("To enable the microphone: Click the camera/microphone icon in the browser address bar and allow access", {
-			  icon: 'ℹ️',
-			  duration: 5000,
-			});
-	  
-			return;
-		  }
-	  
-		  try {
-			await checkMicrophonePermission();
-	  
-			if (hasMicPermission) {
-			  recognitionRef.current.start();
-			}
-		  } catch (error) {
-			console.log('Error starting speech recognition ', error);
-			toast.error("Unable to start speech recognition. Please try again.");
-		  }
+			recognitionRef.current.start();
 		}
-	  };
+	};
 
 	const handleSendTextMsg = async (e: React.FormEvent) => {
 		e.preventDefault();
@@ -210,13 +172,12 @@ const MessageInput = () => {
 	};
 
 	useEffect(() => {
-		// Lắng nghe event pause/resume
 		const handlePauseResume = () => {
-			if (mediaRecorderRef.current) {
-				if (mediaRecorderRef.current.state === "recording") {
-					mediaRecorderRef.current.pause();
-				} else if (mediaRecorderRef.current.state === "paused") {
-					mediaRecorderRef.current.resume();
+			if (mediaRecorder.current) {
+				if (mediaRecorder.current.state === "recording") {
+					mediaRecorder.current.pause();
+				} else if (mediaRecorder.current.state === "paused") {
+					mediaRecorder.current.resume();
 				}
 			}
 		};
@@ -260,25 +221,19 @@ const MessageInput = () => {
                         variant="ghost"
                         size="icon"
                         onClick={toggleListening}
-                        className={`transition-colors ${isListening ? "text-red-500" : hasMicPermission === false ? "text-gray-400" : ""}`}
+                        className={`transition-colors ${isListening ? "text-blue-500" : ""}`}
+                        title="Voice-to-text"
                     >
-                        <Mic className={"h-6 w-6 " + (isListening ? " animate-pulse" : "")} />
+                        <Mic className={isListening ? "text-blue-500" : ""} />
                     </Button>
-                    {msgText.length > 0 ? (
+
+                    {msgText.length > 0 && (
                         <Button
                             type='submit'
                             size={"sm"}
                             className='bg-transparent text-foreground hover:bg-transparent'
                         >
                             <Send />
-                        </Button>
-                    ) : (
-                        <Button
-                            type='submit'
-                            size={"sm"}
-                            className='bg-transparent text-foreground hover:bg-transparent'
-                        >
-                            {/* Remove duplicate microphone icon */}
                         </Button>
                     )}
                 </div>

@@ -1,5 +1,7 @@
 import { IMessage } from "@/store/chat-store";
 import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
+import { Button } from "../ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "../ui/dialog";
 
 type ChatBubbleAvatarProps = {
 	message: IMessage;
@@ -23,4 +25,38 @@ const ChatBubbleAvatar = ({ isGroup, isMember, message, fromAI }: ChatBubbleAvat
 		</Avatar>
 	);
 };
+
+type DeleteConfirmDialogProps = {
+	isOpen: boolean;
+	onClose: () => void;
+	onConfirm: () => void;
+};
+
+// const DeleteConfirmDialog = ({ isOpen, onClose, onConfirm }: DeleteConfirmDialogProps) => {
+// 	return (
+// 		<Dialog open={isOpen} onOpenChange={onClose}>
+// 			<DialogContent className="sm:max-w-[425px]">
+// 				<DialogTitle>Confirm Deletion</DialogTitle>
+// 				<DialogDescription>
+// 					Are you sure you want to delete this conversation?
+// 				</DialogDescription>
+// 				<div className="flex justify-end gap-3 mt-4">
+// 					<Button 
+// 						variant="ghost" 
+// 						onClick={onClose}
+// 					>
+// 						No
+// 					</Button>
+// 					<Button 
+// 						variant="destructive"
+// 						onClick={onConfirm}
+// 					>
+// 						Yes
+// 					</Button>
+// 				</div>
+// 			</DialogContent>
+// 		</Dialog>
+// 	);
+// };
+
 export default ChatBubbleAvatar;

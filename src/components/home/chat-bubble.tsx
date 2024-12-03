@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogDescription } from "../ui/dialog";
 import ReactPlayer from "react-player";
 import ChatAvatarActions from "./chat-avatar-actions";
 import { Bot } from "lucide-react";
+import AudioPlayer from './audio-player';
 
 type ChatBubbleProps = {
 	message: IMessage;
@@ -167,10 +168,5 @@ const TextMessage = ({ message }: { message: IMessage }) => {
 };
 
 const AudioMessage = ({ message }: { message: IMessage }) => {
-    return (
-        <audio controls>
-            <source src={message.content} type="audio/mpeg" />
-            Your browser does not support the audio element.
-        </audio>
-    );
+    return <AudioPlayer audioUrl={message.content} />;
 };

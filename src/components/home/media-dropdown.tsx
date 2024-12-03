@@ -26,6 +26,7 @@ const MediaDropdown = ({ startRecording }: MediaDropdownProps) => {
     const generateUploadUrl = useMutation(api.conversations.generateUploadUrl);
     const sendImage = useMutation(api.messages.sendImage);
     const sendVideo = useMutation(api.messages.sendVideo);
+    const sendAudio = useMutation(api.messages.sendAudio);
     const me = useQuery(api.users.getMe);
 
     const { selectedConversation } = useConversationStore();
@@ -37,10 +38,12 @@ const MediaDropdown = ({ startRecording }: MediaDropdownProps) => {
 
     const [isRecording, setIsRecording] = useState(false);
     const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
-    const sendAudio = useMutation(api.messages.sendAudio);
-    const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-    const [audioChunks, setAudioChunks] = useState<BlobPart[]>([]);
-    const [isDialogOpen, setIsDialogOpen] = useState(false);
+    const [audioUrl, setAudioUrl] = useState<string | null>(null);
+    const mediaRecorder = useRef<MediaRecorder | null>(null);
+    const audioChunks = useRef<Blob[]>([]);
+    const [isPaused, setIsPaused] = useState(false);
+    const [previewBlob, setPreviewBlob] = useState<Blob | null>(null);
+    const [showPreviewDialog, setShowPreviewDialog] = useState(false);
 
     const handleSendImage = async () => {
         setIsLoading(true);
@@ -129,68 +132,117 @@ const MediaDropdown = ({ startRecording }: MediaDropdownProps) => {
 		}
 	};
 
-    const handleStartStopRecording = async () => {
-        if (isRecording) {
-            mediaRecorderRef.current?.stop();
-            setIsRecording(false);
-            setIsDialogOpen(true);
-        } else {
-            setIsRecording(true);
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            const mediaRecorder = new MediaRecorder(stream);
-            mediaRecorderRef.current = mediaRecorder;
-
-            mediaRecorder.ondataavailable = (event) => {
-                setAudioChunks((prev) => [...prev, event.data]);
+    const handleStopRecording = () => {
+        if (mediaRecorder.current) {
+            mediaRecorder.current.stop();
+            mediaRecorder.current.ondataavailable = (e) => {
+                if (e.data.size > 0) {
+                    const blob = new Blob([e.data], { type: 'audio/mpeg' });
+                    setPreviewBlob(blob);
+                    setShowPreviewDialog(true);
+                }
             };
+            setIsRecording(false);
+            setIsPaused(false);
+        }
+    };
 
-            mediaRecorder.start();
+    const handleSendRecording = async () => {
+        if (previewBlob) {
+            try {
+                const postUrl = await generateUploadUrl();
+                const result = await fetch(postUrl, {
+                    method: "POST",
+                    headers: { "Content-Type": "audio/mpeg" },
+                    body: previewBlob
+                });
+
+                const { storageId } = await result.json();
+                await sendAudio({
+                    audioId: storageId,
+                    conversation: selectedConversation!._id,
+                    sender: me!._id,
+                });
+
+                toast.success("Voice message sent!");
+                setPreviewBlob(null);
+            } catch (err) {
+                console.error(err);
+                toast.error("Failed to send voice message");
+            }
+        }
+    };
+
+    const handlePauseResume = () => {
+        if (!mediaRecorder.current) return;
+
+        if (isPaused) {
+            mediaRecorder.current.resume();
+        } else {
+            mediaRecorder.current.pause();
+        }
+        setIsPaused(!isPaused);
+    };
+
+    const handleSendAudio = async () => {
+        if (audioBlob) {
+            try {
+                // Upload audio blob
+                const postUrl = await generateUploadUrl();
+                const result = await fetch(postUrl, {
+                    method: "POST",
+                    headers: { "Content-Type": "audio/mpeg" },
+                    body: audioBlob,
+                });
+
+                const { storageId } = await result.json();
+
+                // Send message
+                await sendAudio({
+                    audioId: storageId,
+                    conversation: selectedConversation!._id,
+                    sender: me!._id,
+                });
+
+                // Cleanup
+                if (audioUrl) {
+                    URL.revokeObjectURL(audioUrl);
+                }
+                setAudioBlob(null);
+                setAudioUrl(null);
+                
+                toast.success("Voice message sent!");
+            } catch (err) {
+                console.error(err);
+                toast.error("Failed to send voice message");
+            }
         }
     };
 
     const handleStartRecording = async () => {
-        setIsRecording(true);
+        audioChunks.current = [];
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        const mediaRecorder = new MediaRecorder(stream);
-        mediaRecorderRef.current = mediaRecorder;
-
-        mediaRecorder.ondataavailable = (event) => {
-            setAudioChunks((prev) => [...prev, event.data]);
+        const recorder = new MediaRecorder(stream);
+        
+        recorder.ondataavailable = (e) => {
+            if (e.data.size > 0) {
+                audioChunks.current.push(e.data);
+            }
         };
 
-        mediaRecorder.start();
+        mediaRecorder.current = recorder;
+        recorder.start();
+        setIsRecording(true);
     };
 
-    const handleStopRecording = () => {
-        mediaRecorderRef.current?.stop();
-        setIsRecording(false);
-    };
-
-    const handleSendAudio = async () => {
-        const audioBlob = new Blob(audioChunks, { type: 'audio/mpeg' });
-
-        try {
-            const postUrl = await generateUploadUrl();
-            const result = await fetch(postUrl, {
-                method: "POST",
-                headers: { "Content-Type": "audio/mpeg" },
-                body: audioBlob,
-            });
-
-            const { storageId } = await result.json();
-
-            await sendAudio({
-                audioId: storageId,
-                conversation: selectedConversation!._id,
-                sender: me!._id,
-            });
-
-            setAudioChunks([]);
-            setIsDialogOpen(false);
-        } catch (error) {
-            toast.error("Failed to send audio");
-        }
-    };
+    // Cleanup URLs khi component unmount
+    useEffect(() => {
+        return () => {
+            if (audioUrl) {
+                URL.revokeObjectURL(audioUrl);
+            }
+        };
+    }, [audioUrl]);
 
     useEffect(() => {
         if (selectedFile) {
@@ -253,7 +305,7 @@ const MediaDropdown = ({ startRecording }: MediaDropdownProps) => {
                 />
             )}
 
-<DropdownMenu>
+            <DropdownMenu>
                 <DropdownMenuTrigger>
                     <Plus className='text-gray-600 dark:text-gray-400' />
                 </DropdownMenuTrigger>
@@ -271,7 +323,7 @@ const MediaDropdown = ({ startRecording }: MediaDropdownProps) => {
                         File
                     </DropdownMenuItem>
                     <DropdownMenuItem
-                        onClick={handleStartStopRecording}
+                        onClick={handleStartRecording}
                         disabled={isRecording}
                         className={isRecording ? 'opacity-50 cursor-not-allowed' : ''}
                     >
@@ -281,22 +333,47 @@ const MediaDropdown = ({ startRecording }: MediaDropdownProps) => {
                 </DropdownMenuContent>
             </DropdownMenu>
 
-            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-                <DialogContent>
-                    <DialogDescription>Audio</DialogDescription>
-                    <audio controls>
-                        <source src={URL.createObjectURL(new Blob(audioChunks, { type: 'audio/mpeg' }))} />
-                    </audio>
-                    <Button onClick={handleSendAudio}>Send</Button>
-                </DialogContent>
-            </Dialog>
-
             {isRecording && (
                 <RecordingIndicator 
-                    onStop={handleStartStopRecording} 
-                    onSend={handleSendAudio}
+                    onStop={handleStopRecording}
+                    onPause={handlePauseResume}
+                    onSend={handleSendRecording}
+                    isPaused={isPaused}
+                    audioBlob={previewBlob || new Blob()}
                 />
             )}
+
+            <Dialog open={showPreviewDialog} onOpenChange={setShowPreviewDialog}>
+                <DialogContent>
+                    <div className="flex flex-col gap-4">
+                        <h3 className="text-lg font-medium">Preview Voice Message</h3>
+                        {previewBlob && (
+                            <audio controls src={URL.createObjectURL(previewBlob)} className="w-full" />
+                        )}
+                        <div className="flex gap-2">
+                            <Button
+                                variant="ghost"
+                                onClick={() => {
+                                    setShowPreviewDialog(false);
+                                    setPreviewBlob(null);
+                                }}
+                                className="flex-1"
+                            >
+                                Cancel
+                            </Button>
+                            <Button
+                                onClick={() => {
+                                    handleSendRecording();
+                                    setShowPreviewDialog(false);
+                                }}
+                                className="flex-1"
+                            >
+                                Send
+                            </Button>
+                        </div>
+                    </div>
+                </DialogContent>
+            </Dialog>
         </>
     );
 };

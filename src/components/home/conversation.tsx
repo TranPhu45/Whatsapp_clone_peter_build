@@ -1,4 +1,6 @@
-import { useState } from "react";
+"use client";
+
+import React, { useEffect, useState } from 'react';
 import { formatDate } from "@/lib/utils";
 import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
 import { MessageSeenSvg } from "@/lib/svgs";
@@ -19,6 +21,13 @@ const Conversation = ({ conversation }: { conversation: any }) => {
     const lastMessage = conversation.lastMessage;
     const lastMessageType = lastMessage?.messageType;
     const me = useQuery(api.users.getMe);
+    const createUser = useMutation(api.users.createInitialUser);
+
+    useEffect(() => {
+        if (me === null) {
+            createUser();
+        }
+    }, [me]);
 
     const { setSelectedConversation, selectedConversation } = useConversationStore();
     

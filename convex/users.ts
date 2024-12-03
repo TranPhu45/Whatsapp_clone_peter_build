@@ -177,27 +177,36 @@ export const getUsers = query({
 
 
 export const getMe = query({
-    args: {},
-    handler: async (ctx, args) => {
-        const identity = await ctx.auth.getUserIdentity();
-        if (!identity) {
-            throw new ConvexError("Unauthorized");
-        }
+  handler: async (ctx) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new ConvexError("Not authenticated");
 
+    return await ctx.db
+      .query("users")
+      .withIndex("by_tokenIdentifier", (q) =>
+        q.eq("tokenIdentifier", identity.tokenIdentifier)
+      )
+      .first();
+  },
+});
 
-        const user = await ctx.db
-            .query("users")
-            .withIndex("by_tokenIdentifier", (q) => q.eq("tokenIdentifier", identity.tokenIdentifier))
-            .unique();
+export const createInitialUser = mutation({
+  handler: async (ctx) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new ConvexError("Not authenticated");
 
+    // Lấy thông tin từ identity của Clerk
+    const email = identity.email;
+    const name = identity.name || identity.email?.split('@')[0] || '';
 
-        if (!user) {
-            throw new ConvexError("User not found");
-        }
-
-
-        return user;
-    },
+    await ctx.db.insert("users", {
+      tokenIdentifier: identity.tokenIdentifier,
+      name: name,
+      email: email || '',  // Đảm bảo không null
+      image: identity.pictureUrl || '',
+      isOnline: true
+    });
+  }
 });
 
 
