@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '../ui/button';
-import { Play, Pause } from 'lucide-react';
+import { Play, Pause, Download } from 'lucide-react';
 
 interface AudioPlayerProps {
   audioUrl: string;
@@ -59,6 +59,15 @@ const AudioPlayer = ({ audioUrl }: AudioPlayerProps) => {
     }
   };
 
+  const downloadAudio = () => {
+    const link = document.createElement('a');
+    link.href = audioUrl;
+    link.download = 'voice-message.mp3'; // You can customize the file name
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
     <div className="flex items-center gap-2 bg-[#0c1524] p-2 rounded-lg w-[180px]">
       <audio ref={audioRef} src={audioUrl} />
@@ -69,6 +78,14 @@ const AudioPlayer = ({ audioUrl }: AudioPlayerProps) => {
         className="h-6 w-6 hover:bg-transparent text-gray-300"
       >
         {isPlaying ? <Pause size={14} /> : <Play size={14} />}
+      </Button>
+      <Button 
+        onClick={downloadAudio}
+        variant="ghost" 
+        size="icon"
+        className="h-6 w-6 hover:bg-transparent text-gray-300"
+      >
+        <Download size={14} />
       </Button>
       <div className="flex-1">
         <div className="relative w-full h-1 bg-gray-700 rounded-full">
