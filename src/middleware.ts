@@ -16,31 +16,53 @@
 // 		"/(api|trpc)(.*)",
 // 	],
 // };
-import { NextRequest, NextResponse } from 'next/server';
 
-// Custom middleware logic
-export function middleware(req: NextRequest) {
-  // Implement your authentication logic here
-  const isAuthenticated = checkAuthentication(req);
 
-  if (!isAuthenticated) {
-    return NextResponse.redirect('/login');
-  }
 
-  return NextResponse.next();
-}
+// import { NextRequest, NextResponse } from 'next/server';
 
-function checkAuthentication(req: NextRequest): boolean {
-  // Implement your authentication check logic here
-  return true; // Placeholder
-}
+// // Custom middleware logic
+// export function middleware(req: NextRequest) {
+//   // Implement your authentication logic here
+//   const isAuthenticated = checkAuthentication(req);
+
+//   if (!isAuthenticated) {
+//     return NextResponse.redirect('/login');
+//   }
+
+//   return NextResponse.next();
+// }
+
+// function checkAuthentication(req: NextRequest): boolean {
+//   // Implement your authentication check logic here
+//   return true; // Placeholder
+// }
+
+// export const config = {
+//   matcher: [
+//     // Exclude files with a "." followed by an extension, which are typically static files.
+//     // Exclude files in the _next directory, which are Next.js internals.
+//     "/((?!.+\\.[\\w]+$|_next).*)",
+//     // Re-include any files in the api or trpc folders that might have an extension
+//     "/(api|trpc)(.*)",
+//   ],
+// };
+
+import { authMiddleware } from "@clerk/nextjs";
+
+export default authMiddleware({
+  // Cho phép truy cập các route này mà không cần đăng nhập
+  publicRoutes: ["/login", "/register"],
+  
+  // Bỏ qua các route static và api
+  ignoredRoutes: [
+    "/api/zegocloud/(.*)",
+    "/_next/(.*)",
+    "/favicon.ico",
+    "/static/(.*)"
+  ]
+});
 
 export const config = {
-  matcher: [
-    // Exclude files with a "." followed by an extension, which are typically static files.
-    // Exclude files in the _next directory, which are Next.js internals.
-    "/((?!.+\\.[\\w]+$|_next).*)",
-    // Re-include any files in the api or trpc folders that might have an extension
-    "/(api|trpc)(.*)",
-  ],
+  matcher: ["/((?!.+\\.[\\w]+$|_next).*)", "/(api|trpc)(.*)"],
 };
