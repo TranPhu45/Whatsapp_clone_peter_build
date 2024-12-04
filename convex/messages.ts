@@ -19,7 +19,7 @@ export const sendTextMessage = mutation({
 	  const user = await ctx.db
 		.query("users")
 		.withIndex("by_tokenIdentifier", (q) => q.eq("tokenIdentifier", identity.tokenIdentifier))
-		.unique();
+		.first();
   
 	  if (!user) {
 		throw new ConvexError("User not found");
@@ -320,3 +320,4 @@ export const sendAudio = mutation({
 // 		return messagesWithSender;
 // 	}
 // });
+//Peter

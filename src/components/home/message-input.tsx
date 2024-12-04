@@ -160,14 +160,20 @@ const MessageInput = () => {
 		}
 	};
 
-	const handleSendTextMsg = async (e: React.FormEvent) => {
-		e.preventDefault();
+	const handleSendTextMsg = async (e?: React.FormEvent) => {
+		if (e) e.preventDefault();
+		if (!msgText.trim() || !selectedConversation || !me) return;
+
 		try {
-			await sendTextMsg({ content: msgText, conversation: selectedConversation!._id, sender: me!._id });
+			await sendTextMsg({
+				content: msgText,
+				conversation: selectedConversation._id,
+				sender: me._id
+			});
 			setMsgText("");
-		} catch (err: any) {
-			toast.error(err.message);
-			console.error(err);
+		} catch (error) {
+			console.error("Error sending message:", error);
+			toast.error("Failed to send message");
 		}
 	};
 
@@ -229,9 +235,10 @@ const MessageInput = () => {
 
                     {msgText.length > 0 && (
                         <Button
-                            type='submit'
+                            type='button'
                             size={"sm"}
                             className='bg-transparent text-foreground hover:bg-transparent'
+                            onClick={handleSendTextMsg}
                         >
                             <Send />
                         </Button>

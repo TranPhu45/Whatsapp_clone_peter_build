@@ -14,16 +14,13 @@ export const createConversation = mutation({
 		const identity = await ctx.auth.getUserIdentity();
 		if (!identity) throw new ConvexError("Unauthorized");
 
-		// jane and john
-		// [jane, john]
-		// [john, jane]
-
+		// Kiểm tra conversation đã tồn tại
 		const existingConversation = await ctx.db
 			.query("conversations")
 			.filter((q) =>
 				q.or(
 					q.eq(q.field("participants"), args.participants),
-					q.eq(q.field("participants"), args.participants.reverse())
+					q.eq(q.field("participants"), [...args.participants].reverse())
 				)
 			)
 			.first();
@@ -32,17 +29,12 @@ export const createConversation = mutation({
 			return existingConversation._id;
 		}
 
-		let groupImage;
-
-		if (args.groupImage) {
-			groupImage = (await ctx.storage.getUrl(args.groupImage)) as string;
-		}
-
+		// Tạo conversation mới
 		const conversationId = await ctx.db.insert("conversations", {
 			participants: args.participants,
 			isGroup: args.isGroup,
 			groupName: args.groupName,
-			groupImage,
+			groupImage: args.groupImage ? (await ctx.storage.getUrl(args.groupImage) as string) : undefined,
 			admin: args.admin,
 		});
 
@@ -66,50 +58,55 @@ export const createUser = mutation({
 });
 
 export const getMyConversations = query({
-	handler: async (ctx) => {
+	args: {},
+	handler: async (ctx, args) => {
 		const identity = await ctx.auth.getUserIdentity();
-		if (!identity) throw new ConvexError("Not authenticated");
+		if (!identity) throw new ConvexError("Unauthorized");
 
 		const user = await ctx.db
 			.query("users")
-			.withIndex("by_tokenIdentifier", (q) => 
-				q.eq("tokenIdentifier", identity.tokenIdentifier)
-			)
-			.first();
+			.withIndex("by_tokenIdentifier", (q) => q.eq("tokenIdentifier", identity.tokenIdentifier))
+			.unique();
 
-		if (!user) return null;
+		if (!user) throw new ConvexError("User not found");
 
-		// Lấy tất cả conversations
-		const conversations = await ctx.db
-			.query("conversations")
-			.collect();
+		const conversations = await ctx.db.query("conversations").collect();
 
-		// Lọc conversations mà user tham gia
-		const myConversations = conversations.filter((conversation) => 
-			conversation.participants.includes(user._id)
-		);
+		const myConversations = conversations.filter((conversation) => {
+			return conversation.participants.includes(user._id);
+		});
 
-		// Lấy thêm thông tin user cho non-group chats
 		const conversationsWithDetails = await Promise.all(
 			myConversations.map(async (conversation) => {
+				let userDetails = {};
+
 				if (!conversation.isGroup) {
-					const otherUserId = conversation.participants.find(id => id !== user._id);
-					if (otherUserId) {
-						const otherUser = await ctx.db.get(otherUserId);
-						return {
-							...conversation,
-							name: otherUser?.name,
-							image: otherUser?.image,
-							isOnline: otherUser?.isOnline
-						};
-					}
+					const otherUserId = conversation.participants.find((id) => id !== user._id);
+					const userProfile = await ctx.db
+						.query("users")
+						.filter((q) => q.eq(q.field("_id"), otherUserId))
+						.take(1);
+
+					userDetails = userProfile[0];
 				}
-				return conversation;
+
+				const lastMessage = await ctx.db
+					.query("messages")
+					.filter((q) => q.eq(q.field("conversation"), conversation._id))
+					.order("desc")
+					.take(1);
+
+				// return should be in this order, otherwise _id field will be overwritten
+				return {
+					...userDetails,
+					...conversation,
+					lastMessage: lastMessage[0] || null,
+				};
 			})
 		);
 
 		return conversationsWithDetails;
-	}
+	},
 });
 
 export const kickUser = mutation({

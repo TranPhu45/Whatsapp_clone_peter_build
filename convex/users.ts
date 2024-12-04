@@ -134,9 +134,19 @@ export const getUsers = query({
         const identity = await ctx.auth.getUserIdentity();
         if (!identity) return [];
 
+        // Lấy thông tin user hiện tại
+        const currentUser = await ctx.db
+            .query("users")
+            .withIndex("by_tokenIdentifier", (q) =>
+                q.eq("tokenIdentifier", identity.tokenIdentifier)
+            )
+            .first();
 
+        if (!currentUser) return [];
+
+        // Lấy tất cả users và lọc bỏ user hiện tại
         const users = await ctx.db.query("users").collect();
-        return users.filter((user) => user.tokenIdentifier !== identity.tokenIdentifier);
+        return users.filter((user) => user._id !== currentUser._id);
     },
 });
 // export const getUsers = query({
@@ -195,7 +205,7 @@ export const createInitialUser = mutation({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new ConvexError("Not authenticated");
 
-    // Kiểm tra user đã tồn tại chưa
+    // Kiểm tra user đã tồn tại
     const existingUser = await ctx.db
       .query("users")
       .withIndex("by_tokenIdentifier", (q) =>
@@ -203,9 +213,8 @@ export const createInitialUser = mutation({
       )
       .first();
 
-    if (existingUser) return; // Nếu user đã tồn tại thì không tạo nữa
+    if (existingUser) return; // Skip nếu đã tồn tại
 
-    // Tạo user mới nếu chưa tồn tại
     await ctx.db.insert("users", {
       tokenIdentifier: identity.tokenIdentifier,
       name: identity.name || identity.email?.split('@')[0] || '',
@@ -234,4 +243,43 @@ export const getGroupMembers = query({
         const users = await ctx.db.query("users").collect();
         return users.filter((user) => conversation.participants.includes(user._id));
     },
+});
+
+export const checkDuplicateUsers = query({
+  handler: async (ctx) => {
+    const users = await ctx.db
+      .query("users")
+      .collect();
+    
+    // Group by tokenIdentifier
+    const grouped: Record<string, typeof users> = users.reduce((acc, user) => {
+      acc[user.tokenIdentifier] = (acc[user.tokenIdentifier] || []).concat(user);
+      return acc;
+    }, {} as Record<string, typeof users>);
+
+    return Object.entries(grouped)
+      .filter(([_, users]) => users.length > 1);
+  }
+});
+
+export const removeDuplicateUsers = mutation({
+  handler: async (ctx) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new ConvexError("Not authenticated");
+
+    const users = await ctx.db
+      .query("users")
+      .withIndex("by_tokenIdentifier", (q) =>
+        q.eq("tokenIdentifier", identity.tokenIdentifier)
+      )
+      .collect();
+
+    // Giữ lại bản ghi mới nhất
+    users.sort((a, b) => b._creationTime - a._creationTime);
+    
+    // Xóa các bản ghi cũ
+    for (let i = 1; i < users.length; i++) {
+      await ctx.db.delete(users[i]._id);
+    }
+  }
 });
