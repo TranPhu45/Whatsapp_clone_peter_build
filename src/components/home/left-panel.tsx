@@ -10,20 +10,25 @@ import { useConvexAuth, useQuery, useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { useEffect } from "react";
 import { useConversationStore } from "@/store/chat-store";
+import { SignIn } from "@clerk/nextjs";
 
 const LeftPanel = () => {
-	const { isAuthenticated } = useConvexAuth();
-	const me = useQuery(api.users.getMe);
-	const createUser = useMutation(api.users.createInitialUser);
-	const conversations = useQuery(api.conversations.getMyConversations);
-
+	const { isAuthenticated, isLoading } = useConvexAuth();
 	const { selectedConversation, setSelectedConversation } = useConversationStore();
 
+	const me = useQuery(api.users.getMe, isAuthenticated ? undefined : "skip");
+	const createUser = useMutation(api.users.createInitialUser);
+	const conversations = useQuery(
+		api.conversations.getMyConversations,
+		isAuthenticated ? undefined : "skip"
+	);
+
 	useEffect(() => {
-		if (me === null && isAuthenticated) {
+		if (!isAuthenticated) return;
+		if (me === null) {
 			createUser();
 		}
-	}, [me, isAuthenticated]);
+	}, [me, isAuthenticated, createUser]);
 
 	useEffect(() => {
 		const conversationIds = conversations?.map((conversation) => conversation._id);
@@ -32,7 +37,32 @@ const LeftPanel = () => {
 		}
 	}, [conversations, selectedConversation, setSelectedConversation]);
 
-	if (!isAuthenticated) return null;
+	if (!isAuthenticated || isLoading) {
+		return (
+			<div className='w-full min-h-screen flex justify-center items-center bg-gray-50'>
+				{isLoading ? (
+					<div className='text-center'>
+						<p>Loading...</p>
+					</div>
+				) : (
+					<div className='w-full max-w-md'>
+						<SignIn
+							appearance={{
+								elements: {
+									rootBox: "mx-auto",
+									card: "rounded-lg shadow-md",
+									headerTitle: "text-2xl font-bold text-center",
+									headerSubtitle: "text-center",
+								}
+							}}
+							redirectUrl="/"
+							afterSignInUrl="/"
+						/>
+					</div>
+				)}
+			</div>
+		);
+	}
 
 	return (
 		<div className='w-1/4 border-gray-600 border-r'>
@@ -59,6 +89,7 @@ const LeftPanel = () => {
 							className='pl-10 py-2 text-sm w-full rounded shadow-sm bg-gray-primary focus-visible:ring-transparent'
 						/>
 					</div>
+					<ListFilter className='cursor-pointer' />
 				</div>
 			</div>
 

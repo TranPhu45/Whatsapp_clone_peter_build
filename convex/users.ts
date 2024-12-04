@@ -132,9 +132,7 @@ export const getUsers = query({
     args: {},
     handler: async (ctx, args) => {
         const identity = await ctx.auth.getUserIdentity();
-        if (!identity) {
-            throw new ConvexError("Unauthorized");
-        }
+        if (!identity) return [];
 
 
         const users = await ctx.db.query("users").collect();
@@ -179,14 +177,16 @@ export const getUsers = query({
 export const getMe = query({
   handler: async (ctx) => {
     const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new ConvexError("Not authenticated");
+    if (!identity) return null;
 
-    return await ctx.db
+    const user = await ctx.db
       .query("users")
       .withIndex("by_tokenIdentifier", (q) =>
         q.eq("tokenIdentifier", identity.tokenIdentifier)
       )
       .first();
+
+    return user; // Có thể trả về null nếu không tìm thấy user
   },
 });
 
@@ -195,14 +195,21 @@ export const createInitialUser = mutation({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new ConvexError("Not authenticated");
 
-    // Lấy thông tin từ identity của Clerk
-    const email = identity.email;
-    const name = identity.name || identity.email?.split('@')[0] || '';
+    // Kiểm tra user đã tồn tại chưa
+    const existingUser = await ctx.db
+      .query("users")
+      .withIndex("by_tokenIdentifier", (q) =>
+        q.eq("tokenIdentifier", identity.tokenIdentifier)
+      )
+      .first();
 
+    if (existingUser) return; // Nếu user đã tồn tại thì không tạo nữa
+
+    // Tạo user mới nếu chưa tồn tại
     await ctx.db.insert("users", {
       tokenIdentifier: identity.tokenIdentifier,
-      name: name,
-      email: email || '',  // Đảm bảo không null
+      name: identity.name || identity.email?.split('@')[0] || '',
+      email: identity.email || '',
       image: identity.pictureUrl || '',
       isOnline: true
     });
@@ -214,26 +221,17 @@ export const getGroupMembers = query({
     args: { conversationId: v.id("conversations") },
     handler: async (ctx, args) => {
         const identity = await ctx.auth.getUserIdentity();
-
-
-        if (!identity) {
-            throw new ConvexError("Unauthorized");
-        }
+        if (!identity) return [];
 
 
         const conversation = await ctx.db
             .query("conversations")
             .filter((q) => q.eq(q.field("_id"), args.conversationId))
             .first();
-        if (!conversation) {
-            throw new ConvexError("Conversation not found");
-        }
+        if (!conversation) return [];
 
 
         const users = await ctx.db.query("users").collect();
-        const groupMembers = users.filter((user) => conversation.participants.includes(user._id));
-
-
-        return groupMembers;
+        return users.filter((user) => conversation.participants.includes(user._id));
     },
 });
